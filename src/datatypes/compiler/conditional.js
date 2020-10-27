@@ -1,6 +1,10 @@
+const {
+  Enum: { CompilerTypeKind: { PARAMETRIZABLE } }
+} = require('../../utils')
+
 module.exports = {
   Read: {
-    'switch': ['parametrizable', (compiler, struct) => {
+    'switch': [PARAMETRIZABLE, (compiler, struct) => {
       let compare = struct.compareTo ? struct.compareTo : struct.compareToValue
       let args = []
       if (compare.startsWith('$')) args.push(compare)
@@ -17,7 +21,7 @@ module.exports = {
       code += `}`
       return compiler.wrapCode(code, args)
     }],
-    'option': ['parametrizable', (compiler, type) => {
+    'option': [PARAMETRIZABLE, (compiler, type) => {
       let code = 'const {value} = ctx.bool(buffer, offset)\n'
       code += 'if (value) {\n'
       code += '  const { value, size } = ' + compiler.callType(type, 'offset + 1') + '\n'
@@ -29,7 +33,7 @@ module.exports = {
   },
 
   Write: {
-    'switch': ['parametrizable', (compiler, struct) => {
+    'switch': [PARAMETRIZABLE, (compiler, struct) => {
       let compare = struct.compareTo ? struct.compareTo : struct.compareToValue
       let args = []
       if (compare.startsWith('$')) args.push(compare)
@@ -46,7 +50,7 @@ module.exports = {
       code += `}`
       return compiler.wrapCode(code, args)
     }],
-    'option': ['parametrizable', (compiler, type) => {
+    'option': [PARAMETRIZABLE, (compiler, type) => {
       let code = 'if (value != null) {\n'
       code += '  offset = ctx.bool(1, buffer, offset)\n'
       code += '  offset = ' + compiler.callType('value', type) + '\n'
@@ -59,7 +63,7 @@ module.exports = {
   },
 
   SizeOf: {
-    'switch': ['parametrizable', (compiler, struct) => {
+    'switch': [PARAMETRIZABLE, (compiler, struct) => {
       let compare = struct.compareTo ? struct.compareTo : struct.compareToValue
       let args = []
       if (compare.startsWith('$')) args.push(compare)
@@ -76,7 +80,7 @@ module.exports = {
       code += `}`
       return compiler.wrapCode(code, args)
     }],
-    'option': ['parametrizable', (compiler, type) => {
+    'option': [PARAMETRIZABLE, (compiler, type) => {
       let code = 'if (value != null) {\n'
       code += '  return 1 + ' + compiler.callType('value', type) + '\n'
       code += '}\n'

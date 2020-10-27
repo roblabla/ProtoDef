@@ -1,6 +1,10 @@
+const {
+  Enum: { CompilerTypeKind: { PARAMETRIZABLE } }
+} = require('../../utils')
+
 module.exports = {
   Read: {
-    'array': ['parametrizable', (compiler, array) => {
+    'array': [PARAMETRIZABLE, (compiler, array) => {
       let code = ''
       if (array.countType) {
         code += 'const { value: count, size: countSize } = ' + compiler.callType(array.countType) + '\n'
@@ -20,11 +24,11 @@ module.exports = {
       code += 'return { value: data, size }'
       return compiler.wrapCode(code)
     }],
-    'count': ['parametrizable', (compiler, type) => {
+    'count': [PARAMETRIZABLE, (compiler, type) => {
       let code = 'return ' + compiler.callType(type.type)
       return compiler.wrapCode(code)
     }],
-    'container': ['parametrizable', (compiler, values) => {
+    'container': [PARAMETRIZABLE, (compiler, values) => {
       values = containerInlining(values)
 
       let code = ''
@@ -62,7 +66,7 @@ module.exports = {
   },
 
   Write: {
-    'array': ['parametrizable', (compiler, array) => {
+    'array': [PARAMETRIZABLE, (compiler, array) => {
       let code = ''
       if (array.countType) {
         code += 'offset = ' + compiler.callType('value.length', array.countType) + '\n'
@@ -75,11 +79,11 @@ module.exports = {
       code += 'return offset'
       return compiler.wrapCode(code)
     }],
-    'count': ['parametrizable', (compiler, type) => {
+    'count': [PARAMETRIZABLE, (compiler, type) => {
       let code = 'return ' + compiler.callType('value', type.type)
       return compiler.wrapCode(code)
     }],
-    'container': ['parametrizable', (compiler, values) => {
+    'container': [PARAMETRIZABLE, (compiler, values) => {
       values = containerInlining(values)
       let code = ''
       for (const i in values) {
@@ -106,7 +110,7 @@ module.exports = {
   },
 
   SizeOf: {
-    'array': ['parametrizable', (compiler, array) => {
+    'array': [PARAMETRIZABLE, (compiler, array) => {
       let code = ''
       if (array.countType) {
         code += 'let size = ' + compiler.callType('value.length', array.countType) + '\n'
@@ -125,11 +129,11 @@ module.exports = {
       code += 'return size'
       return compiler.wrapCode(code)
     }],
-    'count': ['parametrizable', (compiler, type) => {
+    'count': [PARAMETRIZABLE, (compiler, type) => {
       let code = 'return ' + compiler.callType('value', type.type)
       return compiler.wrapCode(code)
     }],
-    'container': ['parametrizable', (compiler, values) => {
+    'container': [PARAMETRIZABLE, (compiler, values) => {
       values = containerInlining(values)
       let code = 'let size = 0\n'
       for (const i in values) {

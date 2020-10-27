@@ -4,6 +4,7 @@
   "description": "A simple yet powerful way to define binary protocols",
   "main": "index.js",
   "author": "roblabla <robinlambertz.dev@gmail.com>",
+  "sideEffects": false,
   "scripts": {
     "prepare": "require-self",
     "lint": "standard",
@@ -21,7 +22,7 @@
     "readable-stream": "^3.0.3"
   },
   "engines": {
-    "node": ">=6"
+    "node": ">=12"
   },
   "bugs": {
     "url": "https://github.com/ProtoDef-io/node-protodef/issues"
@@ -38,5 +39,10 @@
     "mocha": "^5.2.0",
     "require-self": "^0.1.0",
     "standard": "^12.0.1"
-  }
+  },
+  "files": [
+    "src/",
+    "ProtoDef/schemas/",
+    "*.js"
+  ]
 }

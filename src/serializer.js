@@ -91,8 +91,4 @@ class FullPacketParser extends Transform {
   }
 }
 
-module.exports = {
-  Serializer: Serializer,
-  Parser: Parser,
-  FullPacketParser: FullPacketParser
-}
+module.exports = { Serializer, Parser, FullPacketParser }

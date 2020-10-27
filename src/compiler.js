@@ -1,11 +1,10 @@
-const numeric = require('./datatypes/numeric')
-const utils = require('./datatypes/utils')
-
-const conditionalDatatypes = require('./datatypes/compiler-conditional')
-const structuresDatatypes = require('./datatypes/compiler-structures')
-const utilsDatatypes = require('./datatypes/compiler-utils')
-
-const { tryCatch } = require('./utils')
+const {
+  tryCatch,
+  Enum: {
+    CompilerTypeKind: { NATIVE, CONTEXT, PARAMETRIZABLE }
+  }
+} = require('./utils')
+const defaultDatatypes = require('./datatypes/compiler')
 
 class ProtoDefCompiler {
   constructor () {
@@ -96,13 +95,13 @@ class CompiledProtodef {
   }
 
   parsePacketBuffer (type, buffer) {
-    const { value, size } = tryCatch(() => this.read(buffer, 0, type),
+    const { value: data, size } = tryCatch(() => this.read(buffer, 0, type),
       (e) => {
         e.message = `Read error for ${e.field} : ${e.message}`
         throw e
       })
     return {
-      data: value,
+      data,
       metadata: { size },
       buffer: buffer.slice(0, size)
     }
@@ -111,32 +110,85 @@ class CompiledProtodef {
 
 class Compiler {
   constructor () {
+    this.scopeStack = []
+    this.clearTypes()
+  }
+
+  /**
+   * See `addNativeType` / `addContextType` / `addParametrizableType`
+   * @param {String} name
+   * @param {Function} fn
+   * @param {*} kind
+   */
+  addType (name, fn, kind = NATIVE) {
+    switch (kind) {
+      case NATIVE:
+        this.addNativeType(name, fn); break
+      case CONTEXT:
+        this.addContextType(name, fn); break
+      case PARAMETRIZABLE:
+        this.addParametrizableType(name, fn); break
+      default:
+        throw new Error('Unknown datatype kind ' + kind)
+    }
+  }
+
+  /**
+   * @param {String} name
+   * @param {Function} fn
+   * @param {*} kind
+   */
+  removeType (name, fn, kind = NATIVE) {
+    switch (kind) {
+      case NATIVE:
+        delete this.primitiveTypes[name]
+        delete this.native[name]
+        delete this.types[name]
+        break
+      case CONTEXT:
+        delete this.primitiveTypes[name]
+        delete this.context[name]
+        break
+      case PARAMETRIZABLE:
+        delete this.parameterizableTypes[name]
+        break
+      default:
+        throw new Error('Unknown datatype kind ' + kind)
+    }
+  }
+
+  addTypes (types) {
+    for (const [type, [kind, fn]] of Object.entries(types)) {
+      this.addType(type, fn, kind)
+    }
+  }
+
+  clearTypes () {
     this.primitiveTypes = {}
     this.native = {}
     this.context = {}
     this.types = {}
-    this.scopeStack = []
     this.parameterizableTypes = {}
   }
 
   /**
    * A native type is a type read or written by a function that will be called in it's
    * original context.
-   * @param {*} type
-   * @param {*} fn
+   * @param {String} type
+   * @param {Function} fn
    */
   addNativeType (type, fn) {
     this.primitiveTypes[type] = `native.${type}`
     this.native[type] = fn
-    this.types[type] = 'native'
+    this.types[type] = NATIVE
   }
 
   /**
    * A context type is a type that will be called in the protocol's context. It can refer to
    * registred native types using native.{type}() or context type (provided and generated)
    * using ctx.{type}(), but cannot access it's original context.
-   * @param {*} type
-   * @param {*} fn
+   * @param {String} type
+   * @param {Function} fn
    */
   addContextType (type, fn) {
     this.primitiveTypes[type] = `ctx.${type}`
@@ -146,25 +198,17 @@ class Compiler {
   /**
    * A parametrizable type is a function that will be generated at compile time using the
    * provided maker function
-   * @param {*} type
-   * @param {*} maker
+   * @param {String} type
+   * @param {Function} maker
    */
   addParametrizableType (type, maker) {
     this.parameterizableTypes[type] = maker
   }
 
-  addTypes (types) {
-    for (const [type, [kind, fn]] of Object.entries(types)) {
-      if (kind === 'native') this.addNativeType(type, fn)
-      else if (kind === 'context') this.addContextType(type, fn)
-      else if (kind === 'parametrizable') this.addParametrizableType(type, fn)
-    }
-  }
-
   addTypesToCompile (types) {
     for (const [type, json] of Object.entries(types)) {
       // Replace native type, otherwise first in wins
-      if (!this.types[type] || this.types[type] === 'native') this.types[type] = json
+      if (!this.types[type] || this.types[type] === NATIVE) this.types[type] = json
     }
   }
 
@@ -178,10 +222,17 @@ class Compiler {
     recursiveAddTypes(protocolData, path.slice(0))
   }
 
+  /**
+   * @param {String} code
+   * @param {String} indent
+   */
   indent (code, indent = '  ') {
-    return code.split('\n').map((line) => indent + line).join('\n')
+    return code.split('\n').map(line => indent + line).join('\n')
   }
 
+  /**
+   * @param {String} name Slash-separated field name
+   */
   getField (name) {
     let path = name.split('/')
     let i = this.scopeStack.length - 1
@@ -210,6 +261,10 @@ class Compiler {
     throw new Error('Unknown field ' + path)
   }
 
+  /**
+   * Generates code to eval
+   * @private
+   */
   generate () {
     this.scopeStack = [{}]
     let functions = []
@@ -218,7 +273,7 @@ class Compiler {
     }
     for (const type in this.types) {
       if (!functions[type]) {
-        if (this.types[type] !== 'native') {
+        if (this.types[type] !== NATIVE) {
           functions[type] = this.compileType(this.types[type])
           if (functions[type].startsWith('ctx')) {
             functions[type] = 'function () { return ' + functions[type] + '(...arguments) }'
@@ -236,7 +291,7 @@ class Compiler {
 
   /**
    * Compile the given js code, providing native.{type} to the context, return the compiled types
-   * @param {*} code
+   * @param {String} code
    */
   compile (code) {
     // Local variable to provide some context to eval()
@@ -249,29 +304,18 @@ class Compiler {
 class ReadCompiler extends Compiler {
   constructor () {
     super()
-
-    this.addTypes(conditionalDatatypes.Read)
-    this.addTypes(structuresDatatypes.Read)
-    this.addTypes(utilsDatatypes.Read)
-
-    // Add default types
-    for (const key in numeric) {
-      this.addNativeType(key, numeric[key][0])
-    }
-    for (const key in utils) {
-      this.addNativeType(key, utils[key][0])
-    }
+    this.addTypes(defaultDatatypes.Read)
   }
 
   compileType (type) {
     if (type instanceof Array) {
       if (this.parameterizableTypes[type[0]]) { return this.parameterizableTypes[type[0]](this, type[1]) }
-      if (this.types[type[0]] && this.types[type[0]] !== 'native') {
+      if (this.types[type[0]] && this.types[type[0]] !== NATIVE) {
         return this.wrapCode('return ' + this.callType(type[0], 'offset', Object.values(type[1])))
       }
       throw new Error('Unknown parametrizable type: ' + type[0])
     } else { // Primitive type
-      if (type === 'native') return 'null'
+      if (type === NATIVE) return 'null'
       if (this.types[type]) { return 'ctx.' + type }
       return this.primitiveTypes[type]
     }
@@ -284,7 +328,7 @@ class ReadCompiler extends Compiler {
 
   callType (type, offsetExpr = 'offset', args = []) {
     if (type instanceof Array) {
-      if (this.types[type[0]] && this.types[type[0]] !== 'native') {
+      if (this.types[type[0]] && this.types[type[0]] !== NATIVE) {
         return this.callType(type[0], offsetExpr, Object.values(type[1]))
       }
     }
@@ -299,29 +343,18 @@ class ReadCompiler extends Compiler {
 class WriteCompiler extends Compiler {
   constructor () {
     super()
-
-    this.addTypes(conditionalDatatypes.Write)
-    this.addTypes(structuresDatatypes.Write)
-    this.addTypes(utilsDatatypes.Write)
-
-    // Add default types
-    for (const key in numeric) {
-      this.addNativeType(key, numeric[key][1])
-    }
-    for (const key in utils) {
-      this.addNativeType(key, utils[key][1])
-    }
+    this.addTypes(defaultDatatypes.Write)
   }
 
   compileType (type) {
     if (type instanceof Array) {
       if (this.parameterizableTypes[type[0]]) { return this.parameterizableTypes[type[0]](this, type[1]) }
-      if (this.types[type[0]] && this.types[type[0]] !== 'native') {
+      if (this.types[type[0]] && this.types[type[0]] !== NATIVE) {
         return this.wrapCode('return ' + this.callType('value', type[0], 'offset', Object.values(type[1])))
       }
       throw new Error('Unknown parametrizable type: ' + type[0])
     } else { // Primitive type
-      if (type === 'native') return 'null'
+      if (type === NATIVE) return 'null'
       if (this.types[type]) { return 'ctx.' + type }
       return this.primitiveTypes[type]
     }
@@ -334,7 +367,7 @@ class WriteCompiler extends Compiler {
 
   callType (value, type, offsetExpr = 'offset', args = []) {
     if (type instanceof Array) {
-      if (this.types[type[0]] && this.types[type[0]] !== 'native') {
+      if (this.types[type[0]] && this.types[type[0]] !== NATIVE) {
         return this.callType(value, type[0], offsetExpr, Object.values(type[1]))
       }
     }
@@ -349,18 +382,7 @@ class WriteCompiler extends Compiler {
 class SizeOfCompiler extends Compiler {
   constructor () {
     super()
-
-    this.addTypes(conditionalDatatypes.SizeOf)
-    this.addTypes(structuresDatatypes.SizeOf)
-    this.addTypes(utilsDatatypes.SizeOf)
-
-    // Add default types
-    for (const key in numeric) {
-      this.addNativeType(key, numeric[key][2])
-    }
-    for (const key in utils) {
-      this.addNativeType(key, utils[key][2])
-    }
+    this.addTypes(defaultDatatypes.SizeOf)
   }
 
   /**
@@ -376,18 +398,18 @@ class SizeOfCompiler extends Compiler {
     } else {
       this.native[type] = fn
     }
-    this.types[type] = 'native'
+    this.types[type] = NATIVE
   }
 
   compileType (type) {
     if (type instanceof Array) {
       if (this.parameterizableTypes[type[0]]) { return this.parameterizableTypes[type[0]](this, type[1]) }
-      if (this.types[type[0]] && this.types[type[0]] !== 'native') {
+      if (this.types[type[0]] && this.types[type[0]] !== NATIVE) {
         return this.wrapCode('return ' + this.callType('value', type[0], Object.values(type[1])))
       }
       throw new Error('Unknown parametrizable type: ' + type[0])
     } else { // Primitive type
-      if (type === 'native') return 'null'
+      if (type === NATIVE) return 'null'
       if (!isNaN(this.primitiveTypes[type])) return this.primitiveTypes[type]
       if (this.types[type]) { return 'ctx.' + type }
       return this.primitiveTypes[type]
@@ -401,7 +423,7 @@ class SizeOfCompiler extends Compiler {
 
   callType (value, type, args = []) {
     if (type instanceof Array) {
-      if (this.types[type[0]] && this.types[type[0]] !== 'native') {
+      if (this.types[type[0]] && this.types[type[0]] !== NATIVE) {
         return this.callType(value, type[0], Object.values(type[1]))
       }
     }
