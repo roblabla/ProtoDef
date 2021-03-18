@@ -6,6 +6,7 @@ module.exports = {
   Serializer: require('./serializer').Serializer,
   Parser: require('./serializer').Parser,
   FullPacketParser: require('./serializer').FullPacketParser,
+  LazyPacketParser: require('./serializer').LazyPacketParser,
   Compiler: require('./compiler'),
   types: proto.types,
   utils: require('./utils')
